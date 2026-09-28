@@ -43,8 +43,8 @@ def pit_factors(A, meta, asof):
         rec = {"cik": cik}
         rec["roe"] = ni[-1] / eq[-1] if eq and eq[-1] else None
         rec["nm"] = ni[-1] / rev[-1] if rev[-1] else None
-        rec["rev_g3"] = (rev[-1] / rev[-4]) ** (1 / 3) - 1 if len(rev) >= 4 and rev[-4] and rev[-4] > 0 else None
-        rec["ni_g3"] = (ni[-1] / ni[-4]) ** (1 / 3) - 1 if len(ni) >= 4 and ni[-4] and ni[-4] > 0 else None
+        rec["rev_g3"] = (rev[-1] / rev[-4]) ** (1 / 3) - 1 if len(rev) >= 4 and rev[-4] and rev[-4] > 0 and rev[-1] and rev[-1] > 0 else None
+        rec["ni_g3"] = (ni[-1] / ni[-4]) ** (1 / 3) - 1 if len(ni) >= 4 and ni[-4] and ni[-4] > 0 and ni[-1] and ni[-1] > 0 else None
         rec["ocf_ni"] = sum(ocf[-3:]) / sum(ni[-3:]) if len(ocf) >= 3 and len(ni) >= 3 and sum(ni[-3:]) > 0 else None
         capex = f.get("capex", [])
         rec["fcf"] = ocf[-1] - (capex[-1] if capex else 0) if ocf else None
@@ -56,6 +56,7 @@ def pit_factors(A, meta, asof):
         rec["dil3"] = sh[-1] / sh[-4] - 1 if len(sh) >= 4 and sh[-4] else None
         out.append(rec)
     F = pd.DataFrame(out)
+    if F.empty: return F                          # no filings public yet on this date
     cm = dict(zip(meta["cik"], meta["ticker"]))
     F["ticker"] = F["cik"].map(cm)
     return F.dropna(subset=["ticker"])
@@ -94,7 +95,9 @@ def main():
         shares = dict(zip(meta["ticker"], meta["shares_now"]))
         mc = pd.DataFrame({"ticker": px0.index,
                            "mcap": [px0[t] * shares.get(t, np.nan) for t in px0.index]}).dropna()
-        F = rank_score(pit_factors(A, meta, d), mc)
+        P = pit_factors(A, meta, d)
+        if P.empty: continue                      # rebalance date predates filing coverage
+        F = rank_score(P, mc)
         F = F[F["ticker"].isin(px0.dropna().index)]
         rets = (px1 / px0 - 1)
         F["ret"] = F["ticker"].map(rets)

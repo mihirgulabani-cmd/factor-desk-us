@@ -41,9 +41,11 @@ def series(A, cik, key, n=4):
                                "form": cite["form"]}
 
 def cagr(vals, yrs=3):
-    if len(vals) < yrs + 1 or vals[-yrs-1] is None or vals[-1] is None: return None
+    if len(vals) < yrs + 1: return None
     a, b = vals[-yrs-1], vals[-1]
-    if a is None or b is None or a <= 0: return None
+    # BOTH ends must be positive: a negative ratio to a fractional power silently
+    # yields a Python complex number, which poisons ranks and kills json.dump.
+    if a is None or b is None or a <= 0 or b <= 0: return None
     return (b / a) ** (1 / yrs) - 1
 
 def pct_rank(s):
@@ -161,9 +163,14 @@ def main():
     df = pressured_quality(df)
     df = df.sort_values("score", ascending=False)
     recs = df.to_dict(orient="records")
-    for r in recs:                                          # json-safe
-        for k, v in list(r.items()):
-            if isinstance(v, float) and (np.isnan(v) or np.isinf(v)): r[k] = None
+    def js(v):                                              # json-safe, recursive
+        if isinstance(v, dict): return {k: js(x) for k, x in v.items()}
+        if isinstance(v, (list, tuple)): return [js(x) for x in v]
+        if isinstance(v, np.generic): v = v.item()
+        if isinstance(v, complex): return None
+        if isinstance(v, float) and not np.isfinite(v): return None
+        return v
+    recs = [{k: js(v) for k, v in r.items()} for r in recs]
     with open("data/model_us.json", "w") as f:
         json.dump({"asof": str(pd.Timestamp.now().date()), "n": len(recs),
                    "stocks": recs}, f)
