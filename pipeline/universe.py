@@ -28,7 +28,7 @@ def main():
     j = get("https://www.sec.gov/files/company_tickers_exchange.json")
     fields = j["fields"]; rows = j["data"]
     ix = {f: i for i, f in enumerate(fields)}
-    keep_ex = {"NYSE", "Nasdaq", "NYSE MKT", "NYSE Arca", "CBOE"}
+    keep_ex = {"NYSE", "Nasdaq", "NYSE MKT"}   # no Arca/CBOE: those lists are mostly ETFs/ETNs with no company financials
     seen = set(); out = []
     for r in rows:
         cik, name, tk, ex = r[ix["cik"]], r[ix["name"]], r[ix["ticker"]], r[ix["exchange"]]

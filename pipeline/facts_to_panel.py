@@ -39,24 +39,45 @@ CHAINS = {
 }
 INSTANT = {"assets", "eq", "debt_lt", "cash"}          # balance-sheet points
 UNIT_PREF = ["USD", "USD/shares", "shares", "pure"]
+OK_FORMS = ("10-K", "10-K/A", "10-Q", "10-Q/A", "20-F", "20-F/A", "40-F", "40-F/A", "6-K")
+
+# IFRS fallback for foreign private issuers (20-F/40-F filers tag under ifrs-full)
+IFRS = {
+    "rev":    ["Revenue", "RevenueFromContractsWithCustomers"],
+    "ni":     ["ProfitLoss", "ProfitLossAttributableToOwnersOfParent"],
+    "op":     ["ProfitLossFromOperatingActivities"],
+    "gp":     ["GrossProfit"],
+    "ocf":    ["CashFlowsFromUsedInOperatingActivities"],
+    "capex":  ["PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities"],
+    "assets": ["Assets"],
+    "eq":     ["Equity", "EquityAttributableToOwnersOfParent"],
+    "debt_lt": ["NoncurrentPortionOfNoncurrentBorrowings", "Borrowings"],
+    "cash":   ["CashAndCashEquivalents"],
+    "shares_d": ["WeightedAverageShares", "AdjustedWeightedAverageShares"],
+    "eps_d":  ["DilutedEarningsLossPerShare"],
+    "buyback": ["PaymentsToAcquireOrRedeemEntitysShares"],
+    "div":    ["DividendsPaidClassifiedAsFinancingActivities", "DividendsPaid"],
+}
 
 def pick_unit(units):
     for u in UNIT_PREF:
         if u in units: return units[u]
-    return next(iter(units.values()))
+    vals = list(units.values())
+    return vals[0] if vals else []                        # empty units dict on odd trust/ETF filings
 
-def extract(gaap, key):
-    """Return list of dicts for the first chain concept present, annual + quarterly."""
-    for concept in CHAINS[key]:
+def extract(gaap, key, chains=None):
+    """Return rows for the chain concept with the DEEPEST annual history (a filer that
+    adopted a new tag recently keeps its long-tagged concept — the XOM lesson)."""
+    best, best_fy = [], -1
+    for concept in (chains or CHAINS)[key]:
         node = gaap.get(concept)
         if not node: continue
         rows = pick_unit(node.get("units", {}))
-        out = []
+        out, fy_n = [], 0
         for x in rows:
             form = x.get("form", "")
-            if form not in ("10-K", "10-K/A", "10-Q", "10-Q/A", "20-F", "20-F/A"): continue
+            if form not in OK_FORMS: continue
             if key not in INSTANT:
-                # duration facts: annual ~365d, quarterly ~91d; drop YTD 6/9-month spans
                 try:
                     days = (pd.Timestamp(x["end"]) - pd.Timestamp(x["start"])).days
                 except Exception:
@@ -65,12 +86,14 @@ def extract(gaap, key):
                 elif 80 <= days <= 100: span = "Q"
                 else: continue
             else:
-                span = "FY" if form.startswith(("10-K", "20-F")) else "Q"
+                span = "FY" if form.startswith(("10-K", "20-F", "40-F")) else "Q"
+            if span == "FY": fy_n += 1
             out.append({"concept": concept, "key": key, "span": span,
                         "end": x["end"], "val": x.get("val"),
                         "filed": x.get("filed"), "accn": x.get("accn"), "form": form})
-        if out: return out
-    return []
+        if fy_n > best_fy:
+            best, best_fy = out, fy_n
+    return best
 
 def main():
     files = sorted(glob.glob("facts/CIK*.json.gz"))
@@ -86,10 +109,13 @@ def main():
         except Exception:
             continue
         gaap = j.get("facts", {}).get("us-gaap", {})
+        ifrs = j.get("facts", {}).get("ifrs-full", {})
         dei = j.get("facts", {}).get("dei", {})
         got = {}
         for key in CHAINS:
             recs = extract(gaap, key)
+            if not recs and ifrs and key in IFRS:
+                recs = extract(ifrs, key, chains=IFRS)   # foreign IFRS filers (the TSM lesson)
             got[key] = bool(recs)
             for r in recs:
                 r["cik"] = cik
@@ -102,7 +128,7 @@ def main():
             if u: shares_now = sorted(u, key=lambda x: x.get("filed") or "")[-1].get("val")
         meta.append({"cik": cik, "ticker": tk, "name": name,
                      "lender": lender, "shares_now": shares_now})
-        if i % 250 == 0: print(f"  ...{i}/{len(files)}")
+        if i % 250 == 0: print(f"  ...{i}/{len(files)}", flush=True)
     df = pd.DataFrame(rows)
     # de-duplicate: same (cik,key,span,end) filed multiple times -> keep EARLIEST filing
     # for point-in-time truth, but also keep the latest value for display (restatements)
