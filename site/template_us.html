@@ -1,0 +1,110 @@
+<!doctype html><html><head><meta charset="utf-8"><title>US Factor Desk</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#fbfaf7;--card:#fff;--ink:#22251f;--mut:#71766a;--line:#e3e1d8;--acc:#144a7c;--accsoft:#e8eff6;--up:#1d6b45;--dn:#a63a2e;--amber:#95661a;--chip:#f0eee7}
+@media (prefers-color-scheme:dark){:root{--bg:#14161a;--card:#1c1f24;--ink:#e6e6e0;--mut:#979c92;--line:#31353c;--acc:#6ba3d6;--accsoft:#1e2c3a;--up:#5cb98a;--dn:#e08072;--amber:#d0a04a;--chip:#262a30}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,'Segoe UI',sans-serif}
+header{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:baseline;padding:14px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+h1{font-size:20px;margin:0}
+.sub{color:var(--mut);font-size:12.5px}
+nav button{padding:6px 14px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:99px;cursor:pointer;font-size:13px}
+nav button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.wrap{max-width:1200px;margin:0 auto;padding:16px 20px 60px}
+input[type=search]{padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);width:220px}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th{color:var(--mut);text-align:right;font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;white-space:nowrap}
+td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:nth-child(-n+3),td:nth-child(-n+3){text-align:left}
+tr[data-t]{cursor:pointer}tr[data-t]:hover{background:var(--accsoft)}
+.tblwrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:4px 8px}
+.pos{color:var(--up)}.neg{color:var(--dn)}.mut{color:var(--mut)}
+.tag{font-size:10.5px;padding:1px 7px;border-radius:99px;background:var(--chip);color:var(--mut)}
+.tag.pq{background:var(--accsoft);color:var(--acc);font-weight:600}
+.tag.peak{background:#f6ecd9;color:var(--amber)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.kv .k{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.kv .v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.cite{font-size:10.5px;color:var(--mut)}
+.cite a{color:var(--acc);text-decoration:none}
+.warn{background:var(--chip);border-left:3px solid var(--amber);border-radius:0 8px 8px 0;padding:8px 12px;font-size:12.5px;margin:10px 0}
+#detail{display:none}
+.back{cursor:pointer;color:var(--acc);font-size:13px;background:none;border:0;padding:0}
+@media(max-width:600px){input[type=search]{width:130px}}
+</style></head><body>
+<header><h1>US Factor Desk</h1><span class="sub" id="asof"></span>
+<nav id="tabs" style="margin-left:auto;display:flex;gap:6px">
+<button data-v="rank" class="on">Rankings</button><button data-v="pq">Pressured Quality</button><button data-v="bt">Backtest</button><button data-v="doss">Dossiers</button>
+</nav>
+<input type="search" id="q" placeholder="Ticker or name"></header>
+<div class="wrap"><div id="main"></div><div id="detail"></div></div>
+<script id="d" type="application/json">__DATA__</script>
+<script id="b" type="application/json">__BT__</script>
+<script>
+const D=JSON.parse(document.getElementById('d').textContent);
+const BT=JSON.parse(document.getElementById('b').textContent);
+const DOSS=__DOSSIERS__;
+const $=s=>document.querySelector(s);
+let view='rank',q='',sortk='score',sortd=-1;
+const fmt=(n,d=1)=>n==null?'–':(+n).toLocaleString('en-US',{maximumFractionDigits:d});
+const pct=(n,d=1)=>n==null?'–':((n*100).toFixed(d))+'%';
+const bn=n=>n==null?'–':n>=1e12?(n/1e12).toFixed(2)+'T':n>=1e9?(n/1e9).toFixed(1)+'B':(n/1e6).toFixed(0)+'M';
+const cls=v=>v==null?'mut':v>0?'pos':v<0?'neg':'';
+$('#asof').textContent='built '+D.asof+' · '+D.n+' names ≥ $300M · fundamentals from SEC EDGAR (every figure cited) · prices 11y';
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{view=b.dataset.v;document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));render()});
+$('#q').oninput=e=>{q=e.target.value.toUpperCase();render()};
+
+function stockRows(list){
+  return list.map((s,i)=>'<tr data-t="'+s.ticker+'"><td class="mut">'+(i+1)+'</td><td><b>'+s.ticker+'</b>'+(s.pressured?' <span class="tag pq">PRESSURED Q</span>':'')+(s.peak_earnings?' <span class="tag peak" title="Latest-year earnings >1.6x the 3y average — the PE is flattered by a peak year. Normalized PE shown instead.">PEAK EPS</span>':'')+(s.lender?' <span class="tag">bank</span>':'')+'</td><td class="mut" style="max-width:230px;overflow:hidden;text-overflow:ellipsis">'+s.name+'</td>'+
+    '<td>'+bn(s.mcap)+'</td><td>'+fmt(s.price,2)+'</td><td><b>'+fmt(s.score,0)+'</b></td>'+
+    '<td>'+fmt(s.pe_norm,1)+'</td><td class="'+cls(s.rev_g3)+'">'+pct(s.rev_g3,0)+'</td><td class="'+cls(s.ni_g3)+'">'+pct(s.ni_g3,0)+'</td>'+
+    '<td>'+pct(s.roe,0)+'</td><td>'+pct(s.fcf_yield,1)+'</td><td class="'+cls(s.ret12)+'">'+pct(s.ret12,0)+'</td><td class="'+cls(s.off52)+'">'+pct(s.off52,0)+'</td></tr>').join('');
+}
+const TH='<tr><th>#</th><th>Ticker</th><th>Name</th><th data-k="mcap">Mcap</th><th data-k="price">Price</th><th data-k="score">Score</th><th data-k="pe_norm" title="Market cap ÷ 3-year average net income — immune to one peak year">PE (norm)</th><th data-k="rev_g3">Rev 3y</th><th data-k="ni_g3">NI 3y</th><th data-k="roe">ROE</th><th data-k="fcf_yield">FCF yld</th><th data-k="ret12">12m</th><th data-k="off52">vs 52wH</th></tr>';
+function filterSort(list){
+  let L=list.filter(s=>!q||s.ticker.includes(q)||s.name.toUpperCase().includes(q));
+  L.sort((a,b)=>(((b[sortk]??-9e99)-(a[sortk]??-9e99))*(sortd===-1?1:-1)));
+  return L;
+}
+function render(){
+  $('#detail').style.display='none';$('#main').style.display='block';
+  if(view==='rank'){
+    const L=filterSort(D.stocks).slice(0,300);
+    $('#main').innerHTML='<div class="warn">Long-term book only — 1-year holding frame. PE (norm) uses 3-year average earnings; names earning above 1.6× their 3-year average carry the PEAK EPS flag: their headline PE flatters them.</div><div class="tblwrap"><table><thead>'+TH+'</thead><tbody>'+stockRows(L)+'</tbody></table></div>';
+  }
+  if(view==='pq'){
+    const L=filterSort(D.stocks.filter(s=>s.pressured));
+    $('#main').innerHTML='<div class="warn"><b>Pressured quality</b> — fundamentals in the top 30% of the universe, price ≥25% off its 52-week high, trailing its own sector by 10pp+, with revenue and earnings still growing and no peak-earnings distortion. Solid businesses marked down by rotation and flows, not by their filings.</div><div class="tblwrap"><table><thead>'+TH+'</thead><tbody>'+stockRows(L)+'</tbody></table></div>';
+  }
+  if(view==='bt'){
+    if(!BT){$('#main').innerHTML='<div class="card">Backtest runs in the nightly build.</div>';return}
+    const rows=BT.yearly.map(y=>'<tr><td>'+y.date+'</td><td>'+y.n+'</td><td class="'+cls(y.top25)+'">'+pct(y.top25,1)+'</td><td class="'+cls(y.topq)+'">'+pct(y.topq,1)+'</td><td class="'+cls(y.ew)+'">'+pct(y.ew,1)+'</td><td class="'+cls(y.spread)+'">'+pct(y.spread,1)+'</td></tr>').join('');
+    $('#main').innerHTML='<div class="card"><b>Point-in-time backtest</b> — annual July rebalance, only filings public by each rebalance date, 1-year holds, 0.2% costs. CAGRs: top-25 <b>'+pct(BT.cagr_top25,1)+'</b> · top decile <b>'+pct(BT.cagr_topq,1)+'</b> · universe EW <b>'+pct(BT.cagr_ew,1)+'</b>.<div class="warn">'+BT.caveats.join(' · ')+'</div></div><div class="tblwrap"><table><thead><tr><th>Rebalance</th><th>N</th><th>Top 25</th><th>Top decile</th><th>Universe EW</th><th>D10−D1 spread</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }
+  if(view==='doss'){
+    $('#main').innerHTML='<div class="card"><b>Dossiers</b> — the five-step protocol (deep dive → competitors → short-seller case → audit → decision record), every figure tagged VERIFIED / STALE / UNVERIFIED. Produced for the top 50 and on demand.'+(DOSS.length?'':'<div class="warn">None published yet — first batch runs after the first nightly build establishes the top 50.</div>')+'</div>'+DOSS.map(t=>'<a class="card" style="display:block;text-decoration:none;color:var(--ink)" href="dossiers/'+t+'.html"><b>'+t+'</b> <span class="mut">— five-step dossier</span></a>').join('');
+  }
+  document.querySelectorAll('#main th[data-k]').forEach(t=>t.onclick=()=>{const k=t.dataset.k;if(sortk===k)sortd*=-1;else{sortk=k;sortd=-1}render()});
+  document.querySelectorAll('#main tr[data-t]').forEach(t=>t.onclick=()=>detail(t.dataset.t));
+}
+function citeLine(s,key,label){
+  const c=(s.cites||{})[key];if(!c)return'';
+  const acc=(c.accn||'').replace(/-/g,'');
+  return '<div class="cite">'+label+': '+c.concept+' · period '+c.end+' · <b>filed '+c.filed+'</b> ('+c.form+') · <a target="_blank" rel="noopener" href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK='+s.cik+'&type='+c.form+'&dateb=&owner=include&count=10">EDGAR filing '+c.accn+'</a></div>';
+}
+function detail(tk){
+  const s=D.stocks.find(x=>x.ticker===tk);if(!s)return;
+  $('#main').style.display='none';const d=$('#detail');d.style.display='block';
+  const P=s.pillars||{};
+  d.innerHTML='<button class="back">← back</button><h2 style="margin:10px 0 2px">'+s.ticker+' <span class="mut" style="font-weight:400;font-size:14px">'+s.name+'</span></h2>'+
+  '<div class="sub">'+(s.sector||'')+' · mcap '+bn(s.mcap)+' · $'+fmt(s.price,2)+(s.pressured?' · <span class="tag pq">PRESSURED QUALITY</span>':'')+(s.peak_earnings?' · <span class="tag peak">PEAK EPS — use normalized PE</span>':'')+'</div>'+
+  '<div class="card"><div class="grid">'+
+  [['Score',fmt(s.score,0)],['PE (norm 3y)',fmt(s.pe_norm,1)],['PE (headline)',fmt(s.pe,1)],['P/S',fmt(s.ps,1)],['FCF yield',pct(s.fcf_yield,1)],['ROE',pct(s.roe,0)],['Gross margin',pct(s.gm,0)],['Op margin',pct(s.om,0)],['Rev CAGR 3y',pct(s.rev_g3,0)],['NI CAGR 3y',pct(s.ni_g3,0)],['D/E',fmt(s.de,2)],['CFO/NI 3y',fmt(s.ocf_ni3,2)],['Dilution 3y',pct(s.dilution3,1)],['Shareholder yield',pct(s.shareholder_yield,1)],['12m return',pct(s.ret12,0)],['vs 52w high',pct(s.off52,0)]]
+  .map(([k,v])=>'<div class="kv"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>').join('')+'</div>'+
+  '<div style="margin-top:10px">'+['rev','ni','ocf','eq','debt_lt','shares_d'].map(k=>citeLine(s,k,{rev:'Revenue',ni:'Net income',ocf:'Operating cash flow',eq:'Equity',debt_lt:'LT debt',shares_d:'Diluted shares'}[k])).join('')+'</div>'+
+  '<div class="cite" style="margin-top:6px">Pillars: '+Object.entries(P).map(([k,v])=>k+' '+(v==null?'–':v.toFixed(0))).join(' · ')+'</div></div>'+
+  (DOSS.includes(s.ticker)?'<a class="card" style="display:block;text-decoration:none;color:var(--ink)" href="dossiers/'+s.ticker+'.html"><b>Open the five-step dossier →</b></a>':'<div class="card mut">No dossier yet — ask for one and it joins the queue.</div>');
+  d.querySelector('.back').onclick=()=>{d.style.display='none';$('#main').style.display='block'};
+}
+render();
+</script></body></html>
