@@ -21,7 +21,7 @@ jobs:
           python-version: "3.12"
       - run: pip install pandas numpy yfinance
       - name: restore caches (EDGAR facts + price shards)
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             facts
@@ -32,6 +32,16 @@ jobs:
       - run: python pipeline/fetch_facts.py
       - run: python pipeline/facts_to_panel.py
       - run: python pipeline/fetch_prices.py
+      - name: save caches even if a later step fails
+        # plain actions/cache only saves on a GREEN job — runs #1 and #2 each lost
+        # ~90 min of downloads. restore/save split + if:always() keeps them.
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            facts
+            prices
+          key: usdesk-data-${{ github.run_number }}
       - run: python model/screener_model_us.py
       - run: python backtest/pit_backtest.py
       - run: python site/build_html_us.py
