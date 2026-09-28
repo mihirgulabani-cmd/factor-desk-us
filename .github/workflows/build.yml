@@ -1,0 +1,54 @@
+name: build-us-desk
+# PASTE THIS FILE on github.com as .github/workflows/build.yml (same protected-file
+# routine as the NSE desk). Nightly at 22:30 UTC = 6:30 PM ET, after the US close.
+on:
+  schedule:
+    - cron: "30 22 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pandas numpy yfinance
+      - name: restore caches (EDGAR facts + price shards)
+        uses: actions/cache@v4
+        with:
+          path: |
+            facts
+            prices
+          key: usdesk-data-${{ github.run_number }}
+          restore-keys: usdesk-data-
+      - run: python pipeline/universe.py
+      - run: python pipeline/fetch_facts.py
+      - run: python pipeline/facts_to_panel.py
+      - run: python pipeline/fetch_prices.py
+      - run: python model/screener_model_us.py
+      - run: python backtest/pit_backtest.py
+      - run: python site/build_html_us.py
+      - run: |
+          mkdir -p out
+          cp site/US-Factor-Desk.html out/index.html
+          cp -r dossiers out/dossiers 2>/dev/null || true
+          date -u > out/built.txt
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
