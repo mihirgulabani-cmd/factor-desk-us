@@ -62,10 +62,12 @@ def main():
             last[tk] = g["close"].iloc[-1]
     meta["last_close"] = meta["ticker"].map(last)
     meta["mcap"] = meta["last_close"] * meta["shares_now"]
-    keep = meta[(meta["mcap"] >= 300e6) | meta["mcap"].isna()]
+    # unresolved mcap = OUT. Run-#3 lesson: keeping NaN-mcap names let 1,663
+    # warrants/SPAC shells (no dei share count) through the $300M floor.
+    keep = meta[meta["mcap"] >= 300e6]
     out = uni[uni["ticker"].isin(keep["ticker"])]
     out.to_csv("data/universe.csv", index=False)
-    print(f"final universe (>= $300M or unresolved): {len(out)}")
+    print(f"final universe (>= $300M, mcap resolved): {len(out)}")
 
 if __name__ == "__main__":
     main()

@@ -94,6 +94,26 @@ level, what I expect to happen and roughly when, and what I am uncertain about.
 Do not include a recommendation. Write it so that future me can tell whether present me
 was reasoning well or just got lucky.
 
+## Step 6 — Secular exposure (added 29 Sep 2026, his rule)
+
+Classify [TICKER]'s position relative to the dominant external forces of the next
+3 years (agentic AI, GLP-1s, energy transition, autonomy/ADAS, stablecoins/payment
+rails, climate volatility, geopolitics — whatever is live at the time of writing):
+
+- **BENEFICIARY** — owns or rides the wave (the NVDA-2023 position)
+- **TOLL-TAKER** — the wave must pass through it either way
+- **NEUTRAL** — the wave doesn't touch its economics
+- **CONTESTED** — could be armed or eaten; state the evidence to date AND the specific
+  trigger that resolves it (a metric and a threshold, not a vibe)
+- **PREY** — the wave eats its business model (the Chegg-2023 position)
+
+The rule this step enforces: **a PREY name is never presented as a buy, whatever it
+screens at** — cheap prey is the classic value trap (the screener's quality/valuation
+pillars cannot see secular direction). CONTESTED names are presentable only with their
+resolution trigger attached. The classification is re-examined at every dossier
+refresh, because names migrate between buckets (contested → prey is the expensive
+mistake; contested → beneficiary is the fortune).
+
 ---
 
 ## Mechanical verification layer

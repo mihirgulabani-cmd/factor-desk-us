@@ -35,9 +35,17 @@ def main():
         if ex not in keep_ex: continue                     # drops OTC
         if not tk or "-" in tk and tk.split("-")[-1] in ("WT", "U", "R"): continue  # warrants/units
         if tk in seen: continue                            # first listing per ticker
-        # skip obvious non-common share classes duplicating a CIK (keep first class listed)
         seen.add(tk)
         out.append((cik, tk, name.replace(",", " "), ex))
+    # ONE row per company: preferred shares, warrants and units share the common
+    # class's CIK (ALL-PJ vs ALL, VNMEW vs VNME) — keep the SHORTEST ticker per CIK,
+    # which is the common class. Run-#3 lesson: without this the sic merge multiplied
+    # rows 585 tickers deep and preferreds/warrants topped the rankings.
+    best = {}
+    for cik, tk, name, ex in out:
+        if cik not in best or len(tk) < len(best[cik][1]):
+            best[cik] = (cik, tk, name, ex)
+    out = sorted(best.values())
     with open(os.path.join(OUT, "universe_raw.csv"), "w") as f:
         f.write("cik,ticker,name,exchange\n")
         for cik, tk, name, ex in out:

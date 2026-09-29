@@ -23,17 +23,18 @@ W = {"quality": 22, "growth": 22, "balance": 12, "cash": 14, "capital": 8,
 
 def load():
     A = pd.read_csv("data/panel_annual_latest.csv.gz", parse_dates=["end", "filed"])
-    meta = pd.read_csv("data/meta.csv")
-    sic = pd.read_csv("data/sic.csv")
-    uni = pd.read_csv("data/universe.csv")
+    meta = pd.read_csv("data/meta.csv").drop_duplicates("cik")
+    sic = pd.read_csv("data/sic.csv").drop_duplicates("cik")   # dup cik rows here multiplied
+    uni = pd.read_csv("data/universe.csv")                     # meta rows 585 tickers deep (run-#3 lesson)
     px = pd.concat([pd.read_csv(f, parse_dates=["date"])
                     for f in sorted(glob.glob("prices/shard_*.csv.gz"))])
     return A, meta.merge(sic, on="cik", how="left"), uni, px
 
-def series(A, cik, key, n=4):
+def series(GRP, cik, key, n=4):
     """Last n annual values for a concept, oldest->newest, with citation of newest."""
-    g = A[(A.cik == cik) & (A.key == key)].sort_values("end").drop_duplicates("end", keep="last")
-    if g.empty: return [], None
+    g = GRP.get((cik, key))
+    if g is None: return [], None
+    g = g.drop_duplicates("end", keep="last")
     tail = g.tail(n)
     cite = tail.iloc[-1]
     return list(tail["val"]), {"concept": cite["concept"], "end": str(cite["end"].date()),
@@ -52,6 +53,10 @@ def pct_rank(s):
     return s.rank(pct=True) * 100
 
 def build_records(A, meta, uni, px):
+    # group the panel ONCE by (cik,key): per-name full-frame scans made the model
+    # step take 40 min on run #3; this lookup makes it minutes
+    A = A.sort_values("end")
+    GRP = dict(tuple(A.groupby(["cik", "key"], sort=False)))
     px = px.sort_values(["ticker", "date"])
     last = px.groupby("ticker").tail(1).set_index("ticker")
     ret12, off52, above200 = {}, {}, {}
@@ -65,16 +70,31 @@ def build_records(A, meta, uni, px):
     for _, m in meta.iterrows():
         cik, tk = m["cik"], m["ticker"]
         if tk not in uni["ticker"].values or tk not in last.index: continue
-        F, C = {}, {}
-        for key in ("rev", "ni", "op", "gp", "ocf", "capex", "assets", "eq",
-                    "debt_lt", "cash", "shares_d", "eps_d", "buyback", "div"):
-            vals, cite = series(A, cik, key)
-            F[key] = vals
-            if cite: C[key] = cite
         price = float(last.loc[tk, "close"])
         shares = m["shares_now"]
         mcap = price * shares if pd.notna(shares) else None
+        # hard gates at the model itself (belt and braces over fetch_prices'):
+        # no resolvable mcap or under the floor -> not ranked
+        if mcap is None or not np.isfinite(mcap) or mcap < 300e6: continue
+        F, C = {}, {}
+        for key in ("rev", "ni", "op", "gp", "ocf", "capex", "assets", "eq",
+                    "debt_lt", "cash", "shares_d", "eps_d", "buyback", "div"):
+            vals, cite = series(GRP, cik, key)
+            F[key] = vals
+            if cite: C[key] = cite
         ni, rev, eq, ocf = F["ni"], F["rev"], F["eq"], F["ocf"]
+        # no operating financials at all (SPAC shells, funds, trusts) -> not ranked
+        if not ni and not rev: continue
+        # HIS RULE: nothing that is a basket of underlying assets ranks — no ETFs,
+        # funds, unit trusts, closed-end funds, blank-check/SPAC shells, commodity/
+        # gold trusts, oil royalty trusts. Single operating companies only.
+        # SIC 6722 mgmt inv offices · 6726 unit trusts/closed-end · 6770 blank checks
+        # · 6792 oil royalty traders · 6799 investors NEC
+        # (run-#3 lesson: OUNZ/ZSL gold trusts ranked top-15 on trust "ROE")
+        try:
+            if int(float(m.get("sic"))) in (6722, 6726, 6770, 6792, 6799): continue
+        except (TypeError, ValueError):
+            pass
         r = {"cik": int(cik), "ticker": tk, "name": m["name"], "lender": bool(m["lender"]),
              "sic": m.get("sic"), "sector": m.get("sic_desc"), "price": price,
              "mcap": mcap, "cites": C}
